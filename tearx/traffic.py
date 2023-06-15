@@ -1,52 +1,70 @@
 import requests
 
-from parser import Article, QueryPage, parse_results
+from parser import parse_response
 
-from cache import hash_query, read_cached, write_cache, get_cache_paths
-
-from exception import make_exception, dump_response
-
-import math
+from cache import search_cache, write_cache
 
 HOST = 'https://searx.fmac.xyz/search'
 USER_AGENT = 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/104.0.5112.79 Safari/537.36'
 
-def search(
-        query, 
-        category='general', 
-        language='en-US', 
-        page='1', 
-        time_range='', 
-        image_proxy='1', 
-        safesearch='0', 
-        enabled_engines='', 
-        disabled_engines=''):
+HEADERS = {
+    'User-Agent': USER_AGENT,
+    'Accept': 'text/html, */*; q=0.01',
+    'Accept-Language': 'en-US,en;q=0.5',
+    'Accept-Encoding': 'gzip, deflate, br',
+    'Content-Type': 'application/x-www-form-urlencoded; charset=UTF-8',
+    'X-CSRFToken': 'a',
+    'X-Requested-With': 'XMLHttpRequest',
+    'DNT': '1',
+    'Connection': 'keep-alive',
+    'Referer': HOST,
+    'Sec-Fetch-Dest': 'empty',
+    'Sec-Fetch-Mode': 'cors',
+    'Sec-Fetch-Site': 'same-origin',
+    'TE': 'trailers',
+}
 
-    search_hash = hash_query(
-        query,
-        category, 
-        language, 
-        page, 
-        time_range,
-        image_proxy,
-        safesearch,
-        enabled_engines,
-        disabled_engines)
+def search(query, **kwargs):
+    dargs = {
+        'category': 'general',
+        'language': 'en-US',
+        'page': '1',
+        'time_range': '',
+        'image_proxy': '1',
+        'safesearch': '0',
+        'enabled_engines': '',
+        'disabled_engines': ''
+    }
+
+    dargs.update(kwargs)
+
+    result = search_cache((query, *dargs.values()))
+    if result is None:
+        result = search_host(query, **dargs)
+
+    return result
+
     
-    if category == 'general':
-        # TODO: implement caching for other media types
+def search_host(query, **kwargs):
+    dargs = {
+        'category': 'general',
+        'language': 'en-US',
+        'page': '1',
+        'time_range': '',
+        'image_proxy': '1',
+        'safesearch': '0',
+        'enabled_engines': '',
+        'disabled_engines': ''
+    }
 
-        cached_item = read_cached(search_hash)
-
-        if not cached_item == None:
-            return cached_item
+    dargs.update(kwargs)
 
     params = {
         'q': query,
-        'language': language,
-        'pageno': page,
-        'time_range': time_range,
-        'safesearch': safesearch,
+        'language': dargs['language'],
+        'pageno': dargs['page'],
+        'time_range': dargs['time_range'],
+        'safesearch': dargs['safesearch'],
         'theme': 'simple'
     }
     
@@ -63,14 +81,14 @@ def search(
         "social_media": {'category_social media': '1'}
     }
 
-    params.update(categories[category])
+    params.update(categories[dargs['category']])
 
     cookies = {
-        'categories': category,
-        'language': language,
+        'categories': dargs['category'],
+        'language': dargs['language'],
         'locale': 'en',
         'autocomplete': '',
-        'image_proxy': image_proxy,
+        'image_proxy': dargs['image_proxy'],
         'method': 'GET',
         'safesearch': '1',
         'theme': 'simple',
@@ -80,8 +98,8 @@ def search(
         'center_alignment': '1',
         'query_in_title': '0',
         'infinite_scroll': '0',
-        'disabled_engines': disabled_engines,
-        'enabled_engines': enabled_engines,
+        'disabled_engines': dargs['disabled_engines'],
+        'enabled_engines': dargs['enabled_engines'],
         'disabled_plugins': '',
         'enabled_plugins': '',
         'tokens': '',
@@ -89,42 +107,10 @@ def search(
         'enginetab': '1'
     }
 
-    headers = {
-        'User-Agent': USER_AGENT,
-        'Accept': 'text/html, */*; q=0.01',
-        'Accept-Language': 'en-US,en;q=0.5',
-        'Accept-Encoding': 'gzip, deflate, br',
-        'Content-Type': 'application/x-www-form-urlencoded; charset=UTF-8',
-        'X-CSRFToken': 'a',
-        'X-Requested-With': 'XMLHttpRequest',
-        'DNT': '1',
-        'Connection': 'keep-alive',
-        'Referer': HOST,
-        'Sec-Fetch-Dest': 'empty',
-        'Sec-Fetch-Mode': 'cors',
-        'Sec-Fetch-Site': 'same-origin',
-        'TE': 'trailers',
-    }
+    response = requests.get(HOST, params=params, headers=HEADERS, cookies=cookies) 
+    response.raise_for_status()
+    parsed_response = parse_response(response.content)
 
-    try:
-        response_data = requests.get(HOST, params=params, headers=headers, cookies=cookies)
-        
-        response = response_data.content
-
-        response_data.raise_for_status()
-
-        parsed_response = parse_results(response)
-
-        if category == 'general':
-            write_cache(search_hash, parsed_response)
-
-        return parsed_response
-
-    except Exception as err:
-        make_exception(err, [params, cookies, headers], 'Dumped response.')
-        dump_response()
-
-def open_cache(file):
-    with open('response.txt', 'r') as f:
-        cache = f.read()
-    return parse_results(cache)
+    write_cache((query, *dargs.values()), parsed_response)
+    
+    return(parsed_response)

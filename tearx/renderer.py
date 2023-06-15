@@ -46,11 +46,10 @@ class ANSI:
 
     @staticmethod
     def href(description, link):
-        return '\x1b]8;;' + link + '\x1b\\' + description +  '\x1b]8;;\x1b\\'
+        return '\x1b]8;;' + link + '\x1b\\' + description + '\x1b]8;;\x1b\\'
 
 def truncate(string, max_length):
     return (string[:max_length - 3] + '...') if len(string) >= (max_length - 3) else string
-
 
 def printnb(*args, **kwargs):
     print(*args, **kwargs, end='')
@@ -68,7 +67,6 @@ def split_paragraph(paragraph, max_length):
         joined_row.append(token)
     return joined_paragraph.rstrip()
 
-
 def render(response, compatibility, max_width):
     terminal_w, terminal_h = shutil.get_terminal_size((80, 20))
     terminal_w = min(max_width, terminal_w) if not max_width == -1 else terminal_w
@@ -79,13 +77,16 @@ def render(response, compatibility, max_width):
         "Full"
     ]
 
-    print(
+    printnb(
         'Query: ' + repr(response.query) + ANSI.reset + '\n' +
-        'Results: ' + ANSI.bold + f'{int(response.result_count):,}' + ANSI.reset + '  ' +
         'Language: ' + ANSI.bold + response.language + ANSI.reset + '  ' +
-        'SafeSearch: ' + ANSI.bold + safesearch_readable[int(response.safesearch)] + ANSI.reset + '  ' +
-        '\n'
+        'SafeSearch: ' + ANSI.bold + safesearch_readable[int(response.safesearch)] + ANSI.reset + '  '
     )
+
+    if response.category == 'general':
+        printnb('Results: ' + ANSI.bold + f'{int(response.meta.result_count):,}' + ANSI.reset)
+
+    printnb('\n\n')
 
     for index, article in zip(range(5), response.articles):
         article_engines = truncate(" ".join(article.engines), terminal_w)
@@ -100,6 +101,6 @@ def render(response, compatibility, max_width):
             print(ANSI.fg_blue + ANSI.href(truncate(article.url, terminal_w), article.url) + ANSI.reset)
 
         if index == 0:
-            print(split_paragraph(article.content, terminal_w - 10))
+            print(split_paragraph(article.description, terminal_w - 10))
 
         printnb('\n')
